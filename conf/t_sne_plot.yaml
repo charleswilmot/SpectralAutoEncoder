@@ -38,7 +38,9 @@ optimizer:
 restore: ???
 seed: 0
 n_nearest: 128
+log_data_size: 4096
 dimension_reduction: 3
+
 trainer:
   batch_size: 256
 

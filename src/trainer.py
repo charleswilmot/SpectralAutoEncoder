@@ -62,7 +62,7 @@ class Trainer:
             with_info=False,
         )
         dataset = dataset.map(normalize)
-        self.log_data_images, self.log_data_labels = next(dataset.take(4096).batch(4096).as_numpy_iterator())
+        self.log_data_images, self.log_data_labels = next(dataset.take(cfg.log_data_size).batch(cfg.log_data_size).as_numpy_iterator())
         self.plot_data_images, self.plot_data_labels = next(dataset.take(16).batch(16).as_numpy_iterator())
         dataset = dataset.map(strip_off_labels)
         dataset = dataset.shuffle(10000, seed=cfg.seed)

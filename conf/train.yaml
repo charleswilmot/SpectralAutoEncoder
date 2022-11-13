@@ -43,6 +43,7 @@ restore: null
 n_training: 100
 n_train_batches: 100
 image_shape: [28, 28, 1]
+log_data_size: 4096
 
 trainer:
   batch_size: 256
