@@ -1,0 +1,50 @@
+autoencoder:
+  encoder:
+    conv1:
+      output_channels: 8
+      kernel_shape: [4, 4]
+      stride: 2
+    conv2:
+      output_channels: 16
+      kernel_shape: [2, 2]
+      stride: 1
+    mlp:
+      output_sizes: [50, 50, 3]
+  decoder:
+    mlp:
+      output_sizes: [50, 784]
+    reshape:
+      output_shape: [7, 7, 16]
+    conv1:
+      output_channels: 16
+      kernel_shape: [2, 2]
+      stride: 2
+      output_shape: null #[14, 14]
+    conv2:
+      output_channels: 1
+      kernel_shape: [4, 4]
+      stride: 2
+      output_shape: null #[28, 28]
+
+optimizer:
+  lr:
+    init_value: 1e-3
+    transition_steps: 5000
+    decay_rate: 0.5
+    transition_begin: 5000
+    staircase: False
+    end_value: 1e-5
+
+restore: ???
+seed: 0
+n_nearest: 128
+dimension_reduction: 3
+trainer:
+  batch_size: 256
+
+
+
+
+defaults:
+    - hydra: default
+    - _self_

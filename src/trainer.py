@@ -70,6 +70,7 @@ class Trainer:
         dataset = dataset.repeat()
         dataset = dataset.batch(cfg.trainer.batch_size)
         self.dataset = dataset.as_numpy_iterator()
+        self.latent_size = cfg.autoencoder.encoder.mlp.output_sizes[-1]
         ### define all differentiable functions
 
         @jax.jit
@@ -169,6 +170,23 @@ class Trainer:
         latent = self.encoder.apply(self.autoencoder_params, self.log_data_images)
         colors = [color[num] for num in self.log_data_labels]
         ax.scatter(*latent.T, s=1.3, c=colors)
+        patches = [Patch(facecolor=color[i], label=f"{i}") for i in sorted(set(self.log_data_labels))]
+        ax.legend(handles=patches)
+
+    def plot_t_sne(self, fig, dimension_reduction):
+        if dimension_reduction == 3:
+            ax = fig.add_subplot(111, projection='3d')
+        elif dimension_reduction == 2:
+            ax = fig.add_subplot(111)
+        latent = self.encoder.apply(self.autoencoder_params, self.log_data_images)
+        from sklearn.manifold import TSNE
+        tsne = TSNE(
+            dimension_reduction,
+            perplexity=20,
+        )
+        projected = tsne.fit_transform(latent)
+        colors = [color[num] for num in self.log_data_labels]
+        ax.scatter(*projected.T, s=1.3, c=colors)
         patches = [Patch(facecolor=color[i], label=f"{i}") for i in sorted(set(self.log_data_labels))]
         ax.legend(handles=patches)
 
@@ -316,6 +334,8 @@ class Trainer:
         fig.savefig(os.path.join(self.path, f'reconstruction_{iteration:06d}.png'), dpi=300)
         fig.clear()
         #
+        if self.latent_size > 3:
+            return
         self.plot_latent(fig)
         fig.savefig(os.path.join(self.path, f'latent_{iteration:06d}.png'), dpi=300)
         plt.close(fig)
