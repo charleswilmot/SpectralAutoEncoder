@@ -16,7 +16,6 @@ def main(cfg):
     trainer = Trainer(cfg)
     trainer.restore(cfg.restore)
     fig = plt.figure()
-    # trainer.plot_latent(fig)
     trainer.plot_interactive(fig, cfg.n_nearest)
     fig.tight_layout()
     plt.show()
