@@ -7,6 +7,7 @@ import logging
 import jax
 from omegaconf import OmegaConf
 from src.utils import get_original_cfg
+from hydra.utils import to_absolute_path
 
 
 log = logging.getLogger(__name__)
@@ -14,7 +15,7 @@ log = logging.getLogger(__name__)
 
 @hydra.main(version_base="1.2", config_path="../conf/", config_name="train")
 def main(cfg):
-    if cfg.restore is not None and cfg.restore_cfg:
+    if cfg.restore and cfg.restore_cfg:
         original_cfg = get_original_cfg(cfg)
         cfg = OmegaConf.merge(original_cfg, cfg)
     log.info(f'Current directory: {os.getcwd()}')
@@ -22,7 +23,7 @@ def main(cfg):
     key = jax.random.PRNGKey(cfg.seed)
     trainer = Trainer(cfg)
     if cfg.restore:
-        trainer.restore(cfg.restore)
+        trainer.restore(to_absolute_path(cfg.restore))
     else:
         trainer.init(key, jnp.zeros(shape=(1,) + tuple(cfg.image_shape)))
 

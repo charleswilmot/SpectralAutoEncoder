@@ -6,6 +6,7 @@ import logging
 import matplotlib.pyplot as plt
 from omegaconf import OmegaConf
 from src.utils import get_original_cfg
+from hydra.utils import to_absolute_path
 
 
 log = logging.getLogger(__name__)
@@ -17,11 +18,14 @@ def main(cfg):
     cfg = OmegaConf.merge(original_cfg, cfg)
     log.info(f'Current directory: {os.getcwd()}')
     trainer = Trainer(cfg)
-    trainer.restore(cfg.restore)
+    trainer.restore(to_absolute_path(cfg.restore))
     fig = plt.figure()
     trainer.plot_t_sne(fig, cfg.dimension_reduction)
     fig.tight_layout()
-    plt.show()
+    if cfg.save:
+        fig.savefig(to_absolute_path(cfg.restore) + "/plot_t_sne.png")
+    else:
+        plt.show()
     plt.close(fig)
 
 

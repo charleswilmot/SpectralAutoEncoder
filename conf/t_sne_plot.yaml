@@ -2,6 +2,7 @@ restore: ???
 n_nearest: 128
 log_data_size: 4096
 dimension_reduction: 3
+save: False
 
 defaults:
     - hydra: default
