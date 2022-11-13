@@ -63,12 +63,13 @@ class Trainer:
         @partial(jax.jit, static_argnames=('n_nearest'))
         def get_local_singular_values(n_nearest, latent):
             batch_dim = latent.shape[0]
+            limit = batch_dim // n_nearest
             squared_distance_matrix = jnp.sum((latent[:, None] - latent[None, :]) ** 2, axis=-1)   # shape [N, N]
-            neighbors_indices = jnp.argsort(squared_distance_matrix, axis=-1)                      # shape [N, N]
-            neighbors = jnp.take(latent, neighbors_indices, axis=0)                                # shape [N, N, S]
-            close_neighbors = neighbors[:batch_dim // n_nearest, :n_nearest + 1]                   # shape [M, S + 1, S]
-            close_neighbors_relative = close_neighbors[:, 1:] - close_neighbors[:, :1]             # shape [M, S, S]
-            return jnp.linalg.svd(close_neighbors_relative, compute_uv=False)                      # shape [M, S]
+            neighbors_indices = jnp.argsort(squared_distance_matrix[:limit], axis=-1)              # shape [L, N]
+            neighbors = jnp.take(latent, neighbors_indices, axis=0)                                # shape [L, N, S]
+            close_neighbors = neighbors[:, :n_nearest + 1]                                         # shape [L, S + 1, S]
+            close_neighbors_relative = close_neighbors[:, 1:] - close_neighbors[:, :1]             # shape [L, S, S]
+            return jnp.linalg.svd(close_neighbors_relative, compute_uv=False)                      # shape [L, S]
 
         @partial(jax.jit, static_argnames=('desired_dim', 'n_nearest'))
         def skeletonize_loss(autoencoder_params, desired_dim, n_nearest, x):
