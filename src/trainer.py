@@ -78,29 +78,43 @@ class Trainer:
             loss = jnp.sum(jnp.mean((x - reconstructions) ** 2, axis=(1,2,3)), axis=0)
             return loss
 
-        @partial(jax.jit, static_argnames=('n_nearest'))
-        def get_local_singular_values(n_nearest, latent):
-            batch_dim = latent.shape[0]
-            limit = batch_dim // n_nearest
+        @partial(jax.jit, static_argnames=('n_nearest', 'n_firsts', 'center', 'scale'))
+        def get_close_neighbors(latent, n_nearest, n_firsts=None, center=True, scale=True):
             squared_distance_matrix = jnp.sum((latent[:, None] - latent[None, :]) ** 2, axis=-1)   # shape [N, N]
-            neighbors_indices = jnp.argsort(squared_distance_matrix[:limit], axis=-1)              # shape [L, N]
-            neighbors = jnp.take(latent, neighbors_indices, axis=0)                                # shape [L, N, S]
-            close_neighbors = neighbors[:, :n_nearest + 1]                                         # shape [L, S + 1, S]
-            close_neighbors_relative = close_neighbors[:, 1:] - close_neighbors[:, :1]             # shape [L, S, S]
-            return jnp.linalg.svd(close_neighbors_relative, compute_uv=False)                      # shape [L, S]
+            if n_firsts is not None:
+                squared_distance_matrix = squared_distance_matrix[:n_firsts]                       # shape [N_FIRSTS, N]
+            neighbors_indices = jnp.argsort(squared_distance_matrix, axis=-1)                      # shape [N_FIRSTS, N]
+            neighbors = jnp.take(latent, neighbors_indices, axis=0)                                # shape [N_FIRSTS, N, S]
+            close_neighbors = neighbors[:, :n_nearest]                                             # shape [N_FIRSTS, N_NEAREST, S]
+            if not center and scale:
+                raise ValueError("Scaling without centering makes no sense")
+            if center:
+                mean = jnp.mean(close_neighbors, axis=-2, keepdims=True)                           # shape [N_FIRSTS, 1, S]
+                close_neighbors = close_neighbors - mean                                  # shape [N_FIRSTS, N_NEAREST, S]
+            if scale:
+                lengths = jnp.sqrt(jnp.sum(close_neighbors ** 2, axis=-1, keepdims=True)) # shape [N_FIRSTS, N_NEAREST, 1]
+                scale = jnp.mean(lengths, axis=-2, keepdims=True)                                  # shape [N_FIRSTS, 1, 1]
+                close_neighbors = close_neighbors / scale                          # shape [N_FIRSTS, N_NEAREST, S]
+            return close_neighbors
 
-        @partial(jax.jit, static_argnames=('desired_dim', 'n_nearest'))
-        def skeletonize_loss(autoencoder_params, desired_dim, n_nearest, x):
+        @partial(jax.jit, static_argnames=('n_nearest', 'n_firsts', 'scale', 'compute_uv'))
+        def get_local_singular_values(latent, n_nearest, n_firsts=None, scale=True, compute_uv=False):
+            close_neighbors = get_close_neighbors(latent, n_nearest, n_firsts, center=True, scale=scale) # shape [N_FIRSTS, N_NEAREST, S]
+            return jnp.linalg.svd(close_neighbors, compute_uv=compute_uv)                          # shape [N_FIRSTS, S]
+
+        @partial(jax.jit, static_argnames=('desired_dim', 'n_nearest', 'n_firsts', 'scale'))
+        def skeletonize_loss(autoencoder_params, x, desired_dim, n_nearest, n_firsts=None, scale=True):
             latent = self.encoder.apply(autoencoder_params, x)                                     # shape [N, S]
             batch_dim = latent.shape[0]
-            singular_values = get_local_singular_values(n_nearest, latent)                         # shape [M, S]
+            singular_values = get_local_singular_values(latent, n_nearest, n_firsts, scale, False) # shape [M, S]
             return jnp.sum(singular_values[:, desired_dim:]) / batch_dim                           # shape []
 
-        def total_loss(autoencoder_params, regularizer_coef, desired_dim, n_nearest, x):
+        def total_loss(autoencoder_params, x, regularizer_coef, desired_dim, n_nearest, n_firsts=None, scale=True):
             reconstruction_term = reconstruction_loss(autoencoder_params, x)
-            skeletonize_term = skeletonize_loss(autoencoder_params, desired_dim, n_nearest, x)
+            skeletonize_term = skeletonize_loss(autoencoder_params, x, desired_dim, n_nearest, n_firsts, scale)
             return reconstruction_term + regularizer_coef * skeletonize_term
 
+        self.get_close_neighbors = get_close_neighbors
         self.get_local_singular_values = get_local_singular_values
         self.reconstruction_grad = jax.grad(reconstruction_loss)
         self.skeletonize_grad = jax.grad(skeletonize_loss)
@@ -110,28 +124,31 @@ class Trainer:
         self.autoencoder_params = self.autoencoder.init(key, dummy)
         self.learner_state = self.optimizer.init(self.autoencoder_params)
 
-    def train(self, n_batches, regularizer_coef=0.0, desired_dim=2, n_nearest=128):
+    def train(self, n_batches, regularizer_coef=0.0, desired_dim=2, n_nearest=128, scale=True):
         for _, x in zip(range(n_batches), self.dataset):
             if regularizer_coef == 0.0:
                 dloss_dtheta = self.reconstruction_grad(self.autoencoder_params, x)
             else:
-                dloss_dtheta = self.total_grad(self.autoencoder_params, regularizer_coef, desired_dim, n_nearest, x)
+                n_firsts = x.shape[0] // n_nearest
+                dloss_dtheta = self.total_grad(self.autoencoder_params, x, regularizer_coef, desired_dim, n_nearest, n_firsts, scale)
             updates, self.learner_state = self.optimizer.update(dloss_dtheta, self.learner_state)
             self.autoencoder_params = optax.apply_updates(self.autoencoder_params, updates)
 
-    def skeletonize(self, n_batches, desired_dim=2, n_nearest=128):
+    def skeletonize(self, n_batches, desired_dim=2, n_nearest=128, scale=True):
         for _, x in zip(range(n_batches), self.dataset):
-            dloss_dtheta = self.skeletonize_grad(self.autoencoder_params, desired_dim, n_nearest, x)
+            n_firsts = x.shape[0] // n_nearest
+            dloss_dtheta = self.skeletonize_grad(self.autoencoder_params, x, desired_dim, n_nearest, n_firsts, scale)
             updates, self.learner_state = self.optimizer.update(dloss_dtheta, self.learner_state)
             self.autoencoder_params = optax.apply_updates(self.autoencoder_params, updates)
 
-    def log(self, iteration, n_nearest=128):
+    def log(self, iteration, n_nearest=128, scale=True):
         latent = self.encoder.apply(self.autoencoder_params, self.log_data_images)
         reconstructions = self.decoder.apply(self.autoencoder_params, latent)
         rmse = jnp.mean(jnp.abs(reconstructions - self.log_data_images))
         self.tensorboard.add_scalar('rmse', rmse, iteration)
         log.info(f'rmse: {rmse:04f}')
-        singular_values = self.get_local_singular_values(n_nearest, latent)
+        n_firsts = self.log_data_images.shape[0] // n_nearest
+        singular_values = self.get_local_singular_values(latent, n_nearest, n_firsts, scale, compute_uv=False)
         mean_singular_values = jnp.mean(singular_values, axis=0)
         log.info(f'mean_singular_values: {mean_singular_values}')
         for i in range(latent.shape[-1]):
@@ -164,7 +181,7 @@ class Trainer:
 
         # 3D plot
         colors = [color[num] for num in self.log_data_labels]
-        ax_3D.scatter(*latent.T, s=1.3, c=colors)
+        ax_3D.scatter(*latent.T, s=2, c=colors)
         patches = [Patch(facecolor=color[i], label=f"{i}") for i in sorted(set(self.log_data_labels))]
         ax_3D.legend(handles=patches)
         mean = jnp.mean(latent, axis=0)
@@ -192,53 +209,58 @@ class Trainer:
         )
 
         # singular values
-        squared_distance_matrix = jnp.sum((latent[:, None] - latent[None, :]) ** 2, axis=-1)   # shape [N, N]
-        neighbors_indices = jnp.argsort(squared_distance_matrix, axis=-1)                      # shape [N, N]
-        neighbors = jnp.take(latent, neighbors_indices, axis=0)                                # shape [N, N, S]
+        _, singular_values, v = self.get_local_singular_values(
+            latent,
+            n_nearest,
+            n_firsts=None,
+            scale=True,
+            compute_uv=True
+        ) # shape [N, N_NEAREST, S]
+        close_neighbors = self.get_close_neighbors(latent, n_nearest, n_firsts=None, center=False, scale=False)
 
-        def get_singular_values(nearest_index):
-            close_neighbors = neighbors[nearest_index, :n_nearest + 1]                         # shape [S + 1, S]
-            close_neighbors_relative = close_neighbors[1:] - close_neighbors[:1]               # shape [S, S]
-            return jnp.linalg.svd(close_neighbors_relative, compute_uv=True)                   # shape [L, S]
+        neighbors_scatter = ax_3D.scatter(*close_neighbors[nearest_index, :n_nearest].T, c='k', s=10, zorder=3)
 
-        u, singular_values, v = get_singular_values(nearest_index)
-        bars = ax_singular_values.bar(x=tuple(range(latent.shape[-1])), height=singular_values)
+        bars = ax_singular_values.bar(x=tuple(range(latent.shape[-1])), height=singular_values[nearest_index])
 
         # arrows
         quiver = ax_3D.quiver(
             (latent[nearest_index, 0],) * 3,
             (latent[nearest_index, 1],) * 3,
             (latent[nearest_index, 2],) * 3,
-            v[:, 0] * singular_values,
-            v[:, 1] * singular_values,
-            v[:, 2] * singular_values,
+            v[nearest_index, :, 0] * singular_values[nearest_index],
+            v[nearest_index, :, 1] * singular_values[nearest_index],
+            v[nearest_index, :, 2] * singular_values[nearest_index],
         )
 
         # reconstructions
         N = 15
 
-        def get_picture(nearest_index, singular_values, v):
-            grid_x, grid_y = jnp.mgrid[-1:1:N*1j, -1:1:N*1j]
-            coord = jnp.stack((grid_x, grid_y), axis=-1) # [N, N, 2]
-            reshaped_coord = jnp.reshape(coord, (N * N,) + coord.shape[2:]) # [N * N, 2]
-            transform = v[:2] # [2, 3]
-            rotated_coord = reshaped_coord @ transform # [N * N, 3]
-            shifted_coord = rotated_coord + latent[nearest_index]
-            ax_3D.scatter(*shifted_coord.T, alpha=0.1)
-            reconstructions = self.decoder.apply(self.autoencoder_params, shifted_coord) # [N * N, 28, 28, 1]
+        grid_x, grid_y = jnp.mgrid[-1:1:N*1j, -1:1:N*1j]
+        coord = jnp.stack((grid_x, grid_y), axis=-1) # [N, N, 2]
+        reshaped_coord = jnp.reshape(coord, (N * N,) + coord.shape[2:]) # [N * N, 2]
+        def get_picture_coords(nearest_index):
+            return (reshaped_coord @ v[nearest_index, :2]) + latent[nearest_index]
+
+
+        coords = get_picture_coords(nearest_index)
+        minigrid_scatter = ax_3D.scatter(*coords.T, alpha=0.1)
+
+
+        def get_picture(coords):
+            reconstructions = self.decoder.apply(self.autoencoder_params, coords) # [N * N, 28, 28, 1]
             picture = jnp.reshape(reconstructions, (N, N) + reconstructions.shape[1:])
             picture = jnp.concatenate(picture, axis=1) # [N, 28 * N, 28, 1]
             picture = jnp.concatenate(picture, axis=1) # [28 * N, 28 * N, 1]
             return picture
 
-        picture = get_picture(nearest_index, singular_values, v)
+        picture = get_picture(coords)
         image = ax_reconstructions.imshow(picture)
 
         # connecting people
         def on_press(event):
             log.info(f"key pressed: {event.key}")
             update_cursor = False
-            update_singular_values = False
+            update_mini_grid = False
             delta = 0.2
             if event.key == 'left':
                 data = jnp.array(cursor.get_data_3d())
@@ -265,22 +287,24 @@ class Trainer:
                 cursor.set_data_3d(data + jnp.array((0, 0, -delta))[:, None])
                 update_cursor = True
             if event.key == 'enter':
-                update_singular_values = True
+                update_mini_grid = True
             if update_cursor:
                 log.info(f"cursor position: {cursor.get_data_3d().flatten()}")
                 nearest_index = get_nearest_index()
                 nearest.set_data_3d(latent[nearest_index][:, None])
-            if update_singular_values:
-                nearest_index = get_nearest_index()
-                u, singular_values, v = get_singular_values(nearest_index)
-                for rect, val in zip(bars, singular_values): rect.set_height(val)
+                for rect, val in zip(bars, singular_values[nearest_index]): rect.set_height(val)
                 xyz = jnp.repeat(latent[nearest_index][None], 3, axis=0)
-                uvw = xyz + v * singular_values[:, None]
+                uvw = xyz + v[nearest_index] * singular_values[nearest_index, :, None]
                 segments = jnp.stack([xyz, uvw], axis=1)
                 quiver.set_segments(segments)
-                picture = get_picture(nearest_index, singular_values, v)
+                neighbors_scatter._offsets3d = close_neighbors[nearest_index, :n_nearest].T
+            if update_mini_grid:
+                nearest_index = get_nearest_index()
+                coords = get_picture_coords(nearest_index)
+                minigrid_scatter._offsets3d = coords.T
+                picture = get_picture(coords)
                 image.set_data(picture)
-            if update_cursor or update_singular_values:
+            if update_cursor or update_mini_grid:
                 fig.canvas.draw()
 
         fig.canvas.mpl_connect('key_press_event', on_press)
