@@ -1,6 +1,7 @@
 from tensorboardX import SummaryWriter
 from .autoencoder import AutoEncoder
 import tensorflow_datasets as tfds
+from matplotlib.patches import Patch
 import matplotlib.pyplot as plt
 from functools import partial
 import tensorflow as tf
@@ -16,9 +17,25 @@ import os
 log = logging.getLogger(__name__)
 
 
+color = {
+    0: (1.0, 0.0, 0.0),
+    1: (0.0, 1.0, 0.0),
+    2: (0.0, 0.0, 1.0),
+    3: (1.0, 1.0, 0.0),
+    4: (1.0, 0.0, 1.0),
+    5: (0.0, 1.0, 1.0),
+    6: (0.3, 0.3, 0.7),
+    7: (0.3, 0.7, 0.3),
+    8: (0.7, 0.3, 0.3),
+    9: (0.7, 0.7, 0.3),
+}
+
 def normalize(images, labels):
     images = tf.cast(images, tf.float32) / (255. / 2) - 1.
-    return tf.reshape(images, (28, 28, 1))
+    return tf.reshape(images, (28, 28, 1)), labels
+
+
+def strip_off_labels(images, labels): return images
 
 
 class Trainer:
@@ -45,8 +62,9 @@ class Trainer:
             with_info=False,
         )
         dataset = dataset.map(normalize)
-        self.log_data = next(dataset.take(4096).batch(4096).as_numpy_iterator())
-        self.plot_data = next(dataset.take(16).batch(16).as_numpy_iterator())
+        self.log_data_images, self.log_data_labels = next(dataset.take(4096).batch(4096).as_numpy_iterator())
+        self.plot_data_images, self.plot_data_labels = next(dataset.take(16).batch(16).as_numpy_iterator())
+        dataset = dataset.map(strip_off_labels)
         dataset = dataset.shuffle(10000, seed=cfg.seed)
         dataset = dataset.cache()
         dataset = dataset.repeat()
@@ -108,9 +126,9 @@ class Trainer:
             self.autoencoder_params = optax.apply_updates(self.autoencoder_params, updates)
 
     def log(self, iteration, n_nearest=128):
-        latent = self.encoder.apply(self.autoencoder_params, self.log_data)
+        latent = self.encoder.apply(self.autoencoder_params, self.log_data_images)
         reconstructions = self.decoder.apply(self.autoencoder_params, latent)
-        rmse = jnp.mean(jnp.abs(reconstructions - self.log_data))
+        rmse = jnp.mean(jnp.abs(reconstructions - self.log_data_images))
         self.tensorboard.add_scalar('rmse', rmse, iteration)
         log.info(f'rmse: {rmse:04f}')
         singular_values = self.get_local_singular_values(n_nearest, latent)
@@ -124,15 +142,148 @@ class Trainer:
             self.tensorboard.add_scalar(f"normalized_mean_svd_{i}", mean_singular_values[i] / mean_singular_values[0], iteration)
 
     def plot_reconstructions(self, fig):
-        reconstructions = self.autoencoder.apply(self.autoencoder_params, self.plot_data)
-        for i, (a, b) in enumerate(zip(self.plot_data, reconstructions)):
+        reconstructions = self.autoencoder.apply(self.autoencoder_params, self.plot_data_images)
+        for i, (a, b) in enumerate(zip(self.plot_data_images, reconstructions)):
             ax = fig.add_subplot(4, 4, i + 1)
             ax.imshow(jnp.concatenate([a, b], axis=1))
 
     def plot_latent(self, fig):
         ax = fig.add_subplot(111, projection='3d')
-        latent = self.encoder.apply(self.autoencoder_params, self.log_data)
-        ax.scatter(*latent.T, s=0.4)
+        latent = self.encoder.apply(self.autoencoder_params, self.log_data_images)
+        colors = [color[num] for num in self.log_data_labels]
+        ax.scatter(*latent.T, s=1.3, c=colors)
+        patches = [Patch(facecolor=color[i], label=f"{i}") for i in sorted(set(self.log_data_labels))]
+        ax.legend(handles=patches)
+
+    def plot_interactive(self, fig, n_nearest):
+        gs = fig.add_gridspec(2, 2)
+        ax_3D = fig.add_subplot(gs[:, 0], projection='3d')
+        ax_singular_values = fig.add_subplot(gs[0, 1])
+        ax_reconstructions = fig.add_subplot(gs[1, 1])
+        latent = self.encoder.apply(self.autoencoder_params, self.log_data_images)
+
+        # 3D plot
+        colors = [color[num] for num in self.log_data_labels]
+        ax_3D.scatter(*latent.T, s=1.3, c=colors)
+        patches = [Patch(facecolor=color[i], label=f"{i}") for i in sorted(set(self.log_data_labels))]
+        ax_3D.legend(handles=patches)
+        mean = jnp.mean(latent, axis=0)
+        mean = [2.8873544, -1.3857353, -0.7125883]
+        cursor, = ax_3D.plot(
+            xs=(mean[0],),
+            ys=(mean[1],),
+            zs=(mean[2],),
+            marker='o',
+            color='r',
+            alpha=1,
+        )
+
+        def get_nearest_index():
+            cursor_coord = jnp.array(cursor.get_data_3d()).flatten()
+            return jnp.argmin(jnp.sum((latent - jnp.array(cursor_coord)) ** 2, axis=-1))
+
+        nearest_index = get_nearest_index()
+        nearest, = ax_3D.plot(
+            xs=(latent[nearest_index, 0],),
+            ys=(latent[nearest_index, 1],),
+            zs=(latent[nearest_index, 2],),
+            marker='o',
+            color='b'
+        )
+
+        # singular values
+        squared_distance_matrix = jnp.sum((latent[:, None] - latent[None, :]) ** 2, axis=-1)   # shape [N, N]
+        neighbors_indices = jnp.argsort(squared_distance_matrix, axis=-1)                      # shape [N, N]
+        neighbors = jnp.take(latent, neighbors_indices, axis=0)                                # shape [N, N, S]
+
+        def get_singular_values(nearest_index):
+            close_neighbors = neighbors[nearest_index, :n_nearest + 1]                         # shape [S + 1, S]
+            close_neighbors_relative = close_neighbors[1:] - close_neighbors[:1]               # shape [S, S]
+            return jnp.linalg.svd(close_neighbors_relative, compute_uv=True)                   # shape [L, S]
+
+        u, singular_values, v = get_singular_values(nearest_index)
+        bars = ax_singular_values.bar(x=tuple(range(latent.shape[-1])), height=singular_values)
+
+        # arrows
+        quiver = ax_3D.quiver(
+            (latent[nearest_index, 0],) * 3,
+            (latent[nearest_index, 1],) * 3,
+            (latent[nearest_index, 2],) * 3,
+            v[:, 0] * singular_values,
+            v[:, 1] * singular_values,
+            v[:, 2] * singular_values,
+        )
+
+        # reconstructions
+        N = 15
+
+        def get_picture(nearest_index, singular_values, v):
+            grid_x, grid_y = jnp.mgrid[-1:1:N*1j, -1:1:N*1j]
+            coord = jnp.stack((grid_x, grid_y), axis=-1) # [N, N, 2]
+            reshaped_coord = jnp.reshape(coord, (N * N,) + coord.shape[2:]) # [N * N, 2]
+            transform = v[:2] # [2, 3]
+            rotated_coord = reshaped_coord @ transform # [N * N, 3]
+            shifted_coord = rotated_coord + latent[nearest_index]
+            ax_3D.scatter(*shifted_coord.T, alpha=0.1)
+            reconstructions = self.decoder.apply(self.autoencoder_params, shifted_coord) # [N * N, 28, 28, 1]
+            picture = jnp.reshape(reconstructions, (N, N) + reconstructions.shape[1:])
+            picture = jnp.concatenate(picture, axis=1) # [N, 28 * N, 28, 1]
+            picture = jnp.concatenate(picture, axis=1) # [28 * N, 28 * N, 1]
+            return picture
+
+        picture = get_picture(nearest_index, singular_values, v)
+        image = ax_reconstructions.imshow(picture)
+
+        # connecting people
+        def on_press(event):
+            log.info(f"key pressed: {event.key}")
+            update_cursor = False
+            update_singular_values = False
+            delta = 0.2
+            if event.key == 'left':
+                data = jnp.array(cursor.get_data_3d())
+                cursor.set_data_3d(data + jnp.array((-delta, 0, 0))[:, None])
+                update_cursor = True
+            if event.key == 'right':
+                data = jnp.array(cursor.get_data_3d())
+                cursor.set_data_3d(data + jnp.array((delta, 0, 0))[:, None])
+                update_cursor = True
+            if event.key == 'up':
+                data = jnp.array(cursor.get_data_3d())
+                cursor.set_data_3d(data + jnp.array((0, delta, 0))[:, None])
+                update_cursor = True
+            if event.key == 'down':
+                data = jnp.array(cursor.get_data_3d())
+                cursor.set_data_3d(data + jnp.array((0, -delta, 0))[:, None])
+                update_cursor = True
+            if event.key == 'pageup':
+                data = jnp.array(cursor.get_data_3d())
+                cursor.set_data_3d(data + jnp.array((0, 0, delta))[:, None])
+                update_cursor = True
+            if event.key == 'pagedown':
+                data = jnp.array(cursor.get_data_3d())
+                cursor.set_data_3d(data + jnp.array((0, 0, -delta))[:, None])
+                update_cursor = True
+            if event.key == 'enter':
+                update_singular_values = True
+            if update_cursor:
+                log.info(f"cursor position: {cursor.get_data_3d().flatten()}")
+                nearest_index = get_nearest_index()
+                nearest.set_data_3d(latent[nearest_index][:, None])
+            if update_singular_values:
+                nearest_index = get_nearest_index()
+                u, singular_values, v = get_singular_values(nearest_index)
+                for rect, val in zip(bars, singular_values): rect.set_height(val)
+                xyz = jnp.repeat(latent[nearest_index][None], 3, axis=0)
+                uvw = xyz + v * singular_values[:, None]
+                segments = jnp.stack([xyz, uvw], axis=1)
+                quiver.set_segments(segments)
+                picture = get_picture(nearest_index, singular_values, v)
+                image.set_data(picture)
+            if update_cursor or update_singular_values:
+                fig.canvas.draw()
+
+        fig.canvas.mpl_connect('key_press_event', on_press)
 
     def plot(self, iteration):
         fig = plt.figure()

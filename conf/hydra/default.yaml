@@ -4,7 +4,7 @@ job:
     TF_CPP_MIN_LOG_LEVEL: 3
   config:
     override_dirname:
-      kv_sep: '~'
+      kv_sep: '_'
       item_sep: '__'
       exclude_keys: ['restore']
 
