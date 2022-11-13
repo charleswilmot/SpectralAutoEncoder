@@ -5,6 +5,8 @@ from src.trainer import Trainer
 from jax import numpy as jnp
 import logging
 import jax
+from omegaconf import OmegaConf
+from src.utils import get_original_cfg
 
 
 log = logging.getLogger(__name__)
@@ -12,6 +14,9 @@ log = logging.getLogger(__name__)
 
 @hydra.main(version_base="1.2", config_path="../conf/", config_name="train")
 def main(cfg):
+    if cfg.restore is not None and cfg.restore_cfg:
+        original_cfg = get_original_cfg(cfg)
+        cfg = OmegaConf.merge(original_cfg, cfg)
     log.info(f'Current directory: {os.getcwd()}')
 
     key = jax.random.PRNGKey(cfg.seed)

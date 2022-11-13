@@ -35,11 +35,12 @@ optimizer:
     staircase: False
     end_value: 1e-5
 
+restore: null
+restore_cfg: True
 seed: 0
 regularizer_coef: 0
 desired_dim: 2
 n_nearest: 128
-restore: null
 n_training: 100
 n_train_batches: 100
 image_shape: [28, 28, 1]

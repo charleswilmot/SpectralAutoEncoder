@@ -1,0 +1,17 @@
+{
+    // Use IntelliSense to learn about possible attributes.
+    // Hover to view descriptions of existing attributes.
+    // For more information, visit: https://go.microsoft.com/fwlink/?linkid=830387
+    "version": "0.2.0",
+    "configurations": [
+        {
+            "name": "Python : fichier actif",
+            "type": "python",
+            "request": "launch",
+            "module": "scripts.${fileBasenameNoExtension}",
+            "console": "integratedTerminal",
+            "justMyCode": true,
+            "args": ["restore=/home/cwilmot/Code/SpectralAutoEncoder/outputs/train/2022-11-13/17-46-39/1_autoencoder.encoder.mlp.output_sizes_50_50_6__n_training_200/200/"]
+        }
+    ]
+}

@@ -191,6 +191,8 @@ class Trainer:
         ax.legend(handles=patches)
 
     def plot_interactive(self, fig, n_nearest):
+        if self.latent_size > 3:
+            raise ValueError("Latent size must be <= 3")
         gs = fig.add_gridspec(2, 2)
         ax_3D = fig.add_subplot(gs[:, 0], projection='3d')
         ax_singular_values = fig.add_subplot(gs[0, 1])
