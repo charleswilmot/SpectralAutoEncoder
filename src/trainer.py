@@ -147,6 +147,7 @@ class Trainer:
         reconstructions = self.decoder.apply(self.autoencoder_params, latent)
         rmse = jnp.mean(jnp.abs(reconstructions - self.log_data_images))
         self.tensorboard.add_scalar('rmse', rmse, iteration)
+        self.tensorboard.add_scalar('learning_rate', self.learner_state.hyperparams['learning_rate'], iteration)
         log.info(f'rmse: {rmse:04f}')
         n_firsts = self.log_data_images.shape[0] // n_nearest
         singular_values = self.get_local_singular_values(latent, n_nearest, n_firsts, scale, compute_uv=False)
