@@ -1,0 +1,7 @@
+lr:
+    init_value: 1e-3
+    transition_steps: 5000
+    decay_rate: 0.5
+    transition_begin: 5000
+    staircase: False
+    end_value: 1e-5

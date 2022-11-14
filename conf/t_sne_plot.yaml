@@ -1,15 +1,11 @@
 restore: ???
 
-autoencoder: ${get_original:${restore},autoencoder}
-optimizer: ${get_original:${restore},optimizer}
-seed: ${get_original:${restore},seed}
-trainer: ${get_original:${restore},trainer}
-
-n_nearest: 128
-log_data_size: 4096
 dimension_reduction: 3
 save: False
 
 defaults:
     - hydra: default
+    - trainer: original
+    - trainer/autoencoder: original
+    - trainer/optimizer: original
     - _self_

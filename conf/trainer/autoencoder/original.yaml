@@ -1,0 +1,27 @@
+latent_dim: ${get_original:${restore}, trainer.autoencoder.latent_dim}
+encoder:
+    conv1:
+      output_channels: ${get_original:${restore}, trainer.autoencoder.encoder.conv1.output_channels}
+      kernel_shape: ${get_original:${restore}, trainer.autoencoder.encoder.conv1.kernel_shape}
+      stride: ${get_original:${restore}, trainer.autoencoder.encoder.conv1.stride}
+    conv2:
+      output_channels: ${get_original:${restore}, trainer.autoencoder.encoder.conv2.output_channels}
+      kernel_shape: ${get_original:${restore}, trainer.autoencoder.encoder.conv2.kernel_shape}
+      stride: ${get_original:${restore}, trainer.autoencoder.encoder.conv2.stride}
+    mlp:
+      output_sizes: ${get_original:${restore}, trainer.autoencoder.encoder.mlp.output_sizes}
+decoder:
+  mlp:
+    output_sizes: ${get_original:${restore}, trainer.autoencoder.decoder.mlp.output_sizes}
+  reshape:
+    output_shape: ${get_original:${restore}, trainer.autoencoder.decoder.reshape.output_shape}
+  conv1:
+    output_channels: ${get_original:${restore}, trainer.autoencoder.decoder.conv1.output_channels}
+    kernel_shape: ${get_original:${restore}, trainer.autoencoder.decoder.conv1.kernel_shape}
+    stride: ${get_original:${restore}, trainer.autoencoder.decoder.conv1.stride}
+    output_shape: ${get_original:${restore}, trainer.autoencoder.decoder.conv1.output_shape}
+  conv2:
+    output_channels: ${get_original:${restore}, trainer.autoencoder.decoder.conv2.output_channels}
+    kernel_shape: ${get_original:${restore}, trainer.autoencoder.decoder.conv2.kernel_shape}
+    stride: ${get_original:${restore}, trainer.autoencoder.decoder.conv2.stride}
+    output_shape: ${get_original:${restore}, trainer.autoencoder.decoder.conv2.output_shape}

@@ -68,7 +68,7 @@ class Trainer:
         dataset = dataset.shuffle(10000, seed=cfg.seed)
         dataset = dataset.cache()
         dataset = dataset.repeat()
-        dataset = dataset.batch(cfg.trainer.batch_size)
+        dataset = dataset.batch(cfg.batch_size)
         self.dataset = dataset.as_numpy_iterator()
         self.latent_size = cfg.autoencoder.encoder.mlp.output_sizes[-1]
         ### define all differentiable functions

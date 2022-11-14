@@ -16,14 +16,14 @@ log = logging.getLogger(__name__)
 @hydra.main(version_base="1.2", config_path="../conf/", config_name="train")
 def main(cfg):
     if cfg.restore and cfg.restore_cfg:
-        cfg.autoencoder = utils.get_original(cfg.restore, "autoencoder")
+        cfg.trainer.autoencoder = utils.get_original(cfg.restore, "trainer.autoencoder")
         path = "./.hydra/config.yaml"
         with open(path, "w") as f: OmegaConf.save(config=cfg, f=f)
 
     log.info(f'Current directory: {os.getcwd()}')
 
-    key = jax.random.PRNGKey(cfg.seed)
-    trainer = Trainer(cfg)
+    key = jax.random.PRNGKey(cfg.trainer.seed)
+    trainer = Trainer(cfg.trainer)
     if cfg.restore:
         trainer.restore(to_absolute_path(cfg.restore))
     else:

@@ -6,7 +6,6 @@ import logging
 import matplotlib.pyplot as plt
 from omegaconf import OmegaConf
 import src.utils
-from src.utils import get_original_cfg
 from hydra.utils import to_absolute_path
 
 
@@ -17,7 +16,7 @@ log = logging.getLogger(__name__)
 def main(cfg):
     plt.rcParams['keymap.back'].remove('left')
     log.info(f'Current directory: {os.getcwd()}')
-    trainer = Trainer(cfg)
+    trainer = Trainer(cfg.trainer)
     trainer.restore(to_absolute_path(cfg.restore))
     fig = plt.figure()
     trainer.plot_interactive(fig, cfg.n_nearest)

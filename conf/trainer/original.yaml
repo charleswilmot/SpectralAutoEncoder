@@ -1,0 +1,3 @@
+batch_size: ${get_original:${restore}, trainer.batch_size}
+log_data_size: ${get_original:${restore}, trainer.log_data_size}
+seed: ${get_original:${restore}, trainer.seed}

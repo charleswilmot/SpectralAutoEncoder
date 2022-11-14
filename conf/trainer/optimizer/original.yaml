@@ -1,0 +1,7 @@
+lr:
+    init_value: ${get_original:${restore}, trainer.optimizer.lr.init_value}
+    transition_steps: ${get_original:${restore}, trainer.optimizer.lr.transition_steps}
+    decay_rate: ${get_original:${restore}, trainer.optimizer.lr.decay_rate}
+    transition_begin: ${get_original:${restore}, trainer.optimizer.lr.transition_begin}
+    staircase: ${get_original:${restore}, trainer.optimizer.lr.staircase}
+    end_value: ${get_original:${restore}, trainer.optimizer.lr.end_value}

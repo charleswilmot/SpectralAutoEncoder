@@ -15,7 +15,7 @@ log = logging.getLogger(__name__)
 @hydra.main(version_base="1.2", config_path="../conf/", config_name="t_sne_plot")
 def main(cfg):
     log.info(f'Current directory: {os.getcwd()}')
-    trainer = Trainer(cfg)
+    trainer = Trainer(cfg.trainer)
     trainer.restore(to_absolute_path(cfg.restore))
     fig = plt.figure()
     trainer.plot_t_sne(fig, cfg.dimension_reduction)
