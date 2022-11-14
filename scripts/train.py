@@ -6,7 +6,7 @@ from jax import numpy as jnp
 import logging
 import jax
 from omegaconf import OmegaConf
-from src.utils import get_original_cfg
+import src.utils as utils
 from hydra.utils import to_absolute_path
 
 
@@ -16,8 +16,10 @@ log = logging.getLogger(__name__)
 @hydra.main(version_base="1.2", config_path="../conf/", config_name="train")
 def main(cfg):
     if cfg.restore and cfg.restore_cfg:
-        original_cfg = get_original_cfg(cfg)
-        cfg = OmegaConf.merge(original_cfg, cfg)
+        cfg.autoencoder = utils.get_original(cfg.restore, "autoencoder")
+        path = "./.hydra/config.yaml"
+        with open(path, "w") as f: OmegaConf.save(config=cfg, f=f)
+
     log.info(f'Current directory: {os.getcwd()}')
 
     key = jax.random.PRNGKey(cfg.seed)

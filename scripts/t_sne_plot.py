@@ -5,7 +5,7 @@ from src.trainer import Trainer
 import logging
 import matplotlib.pyplot as plt
 from omegaconf import OmegaConf
-from src.utils import get_original_cfg
+import src.utils
 from hydra.utils import to_absolute_path
 
 
@@ -14,8 +14,6 @@ log = logging.getLogger(__name__)
 
 @hydra.main(version_base="1.2", config_path="../conf/", config_name="t_sne_plot")
 def main(cfg):
-    original_cfg = get_original_cfg(cfg)
-    cfg = OmegaConf.merge(original_cfg, cfg)
     log.info(f'Current directory: {os.getcwd()}')
     trainer = Trainer(cfg)
     trainer.restore(to_absolute_path(cfg.restore))

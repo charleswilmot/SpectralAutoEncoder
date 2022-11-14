@@ -1,16 +1,12 @@
 from os.path import join
 from omegaconf import OmegaConf
-# from hydra.core.hydra_config import HydraConfig
+from hydra.utils import to_absolute_path
 
 
-def get_original_cfg(cfg):
-    if cfg.restore is None:
-        raise ValueError("Cannot restore the original config file, no restore path is specified")
-    original_cfg = OmegaConf.load(join(cfg.restore, '../.hydra/config.yaml'))
-    return original_cfg
+def get_original(restore, dot_path):
+    if restore is None:
+        return None
+    original_cfg = OmegaConf.load(join(to_absolute_path(restore), '../.hydra/config.yaml'))
+    return OmegaConf.select(original_cfg, dot_path)
 
-
-# def get_cfg_overrides_only():
-#     overrides = HydraConfig.get().overrides
-#     overrides.pop("hydra")
-#     return overrides
+OmegaConf.register_new_resolver("get_original", get_original)
