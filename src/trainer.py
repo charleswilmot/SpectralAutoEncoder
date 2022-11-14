@@ -183,6 +183,8 @@ class Trainer:
         tsne = TSNE(
             dimension_reduction,
             perplexity=20,
+            init='pca',
+            learning_rate='auto',
         )
         projected = tsne.fit_transform(latent)
         colors = [color[num] for num in self.log_data_labels]
@@ -337,6 +339,7 @@ class Trainer:
         fig.clear()
         #
         if self.latent_size > 3:
+            plt.close(fig)
             return
         self.plot_latent(fig)
         fig.savefig(os.path.join(self.path, f'latent_{iteration:06d}.png'), dpi=300)
